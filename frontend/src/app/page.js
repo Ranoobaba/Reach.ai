@@ -340,10 +340,8 @@ export default function Home() {
           </div>
         </div>
 
-        {/* Footer */}
-        <div className="text-center mt-12 pb-8 text-zinc-600 text-sm">
-          <p>Free email domain lookup with caching</p>
-        </div>
+        {/* Footer spacer */}
+        <div className="pb-8"></div>
       </div>
     </main>
   );
