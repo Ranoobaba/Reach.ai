@@ -24,16 +24,20 @@ allowed_origins = [
     "http://127.0.0.1:3000",
 ]
 
-# Add production frontend URL if set
+# Add production frontend URL if set (handle with/without trailing slash)
 frontend_url = os.getenv("FRONTEND_URL")
 if frontend_url:
+    # Remove trailing slash for consistency
+    frontend_url = frontend_url.rstrip("/")
     allowed_origins.append(frontend_url)
+    # Also add with trailing slash just in case
+    allowed_origins.append(f"{frontend_url}/")
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
 
