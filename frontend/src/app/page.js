@@ -62,10 +62,10 @@ export default function Home() {
           </p>
         </div>
 
-        {/* Main content */}
-        <div className="flex flex-col lg:flex-row items-start justify-center gap-8 max-w-6xl mx-auto">
+        {/* Main content - Vertical layout */}
+        <div className="flex flex-col items-center gap-8 max-w-xl mx-auto">
           {/* Form card */}
-          <div className="w-full lg:w-1/3 bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 
+          <div className="w-full bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 
                           rounded-2xl p-8 shadow-2xl">
             <EmailForm onGenerate={handleGenerate} isLoading={isLoading} />
             
@@ -78,7 +78,7 @@ export default function Home() {
 
           {/* Results card */}
           {result && (
-            <div className="w-full lg:w-1/3 bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 
+            <div className="w-full bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 
                             rounded-2xl p-8 shadow-2xl animate-fade-in">
               <EmailResults domain={result.domain} emails={result.emails} />
             </div>
@@ -86,7 +86,7 @@ export default function Home() {
 
           {/* Tip card */}
           {result && (
-            <div className="w-full lg:w-1/3 bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 
+            <div className="w-full bg-zinc-900/50 backdrop-blur-sm border border-zinc-800 
                             rounded-2xl p-8 shadow-2xl animate-fade-in">
               <div className="space-y-4">
                 <div className="flex items-center gap-2">
