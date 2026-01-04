@@ -96,6 +96,34 @@ def crawl_with_jina(url: str) -> str | None:
         return None
 
 
+def is_domain_relevant(domain: str, company_name: str) -> bool:
+    """
+    Check if a domain is relevant to the company name.
+    This helps filter out unrelated domains from search results.
+    """
+    if not domain or not company_name:
+        return False
+    
+    # Normalize both for comparison
+    domain_lower = domain.lower()
+    company_lower = company_name.lower().replace(" ", "").replace("-", "").replace(".", "")
+    
+    # Remove common TLDs and prefixes for comparison
+    domain_base = domain_lower.split(".")[0]
+    
+    # Check if company name is in the domain or vice versa
+    if company_lower in domain_base or domain_base in company_lower:
+        return True
+    
+    # Check for partial matches (at least 4 chars matching)
+    if len(company_lower) >= 4 and company_lower[:4] in domain_base:
+        return True
+    if len(domain_base) >= 4 and domain_base[:4] in company_lower:
+        return True
+    
+    return False
+
+
 def search_company_contact_email(company_name: str) -> tuple[str | None, str | None]:
     """
     Use DuckDuckGo to search directly for company contact/support email.
@@ -103,13 +131,14 @@ def search_company_contact_email(company_name: str) -> tuple[str | None, str | N
     Returns: (email_domain, website_url)
     """
     website_url = None
+    all_found_emails = []
     
     try:
         with DDGS() as ddgs:
             # Search specifically for contact email
             queries = [
-                f"{company_name} contact email",
-                f"{company_name} support email address",
+                f"{company_name} official contact email",
+                f"{company_name} company email address",
                 f'"{company_name}" email @',
             ]
             
@@ -117,15 +146,18 @@ def search_company_contact_email(company_name: str) -> tuple[str | None, str | N
                 results = list(ddgs.text(query, max_results=5))
                 
                 for result in results:
-                    # Capture website URL
+                    # Capture website URL - prioritize URLs matching company name
                     url = result.get("href", "") or result.get("link", "")
-                    if url and not website_url:
+                    if url:
                         domain = extract_domain_from_url(url)
                         excluded = ["wikipedia.org", "linkedin.com", "facebook.com", 
-                                   "twitter.com", "youtube.com", "crunchbase.com"]
+                                   "twitter.com", "youtube.com", "crunchbase.com",
+                                   "reddit.com", "quora.com", "medium.com"]
                         if domain and not any(ex in domain for ex in excluded):
-                            parsed = urlparse(url)
-                            website_url = f"{parsed.scheme}://{parsed.netloc}"
+                            # Prefer URLs that match company name
+                            if not website_url or is_domain_relevant(domain, company_name):
+                                parsed = urlparse(url)
+                                website_url = f"{parsed.scheme}://{parsed.netloc}"
                     
                     # Check snippet/body for email addresses
                     snippet = result.get("body", "") or result.get("snippet", "")
@@ -134,10 +166,19 @@ def search_company_contact_email(company_name: str) -> tuple[str | None, str | N
                     # Extract emails from the search result
                     emails = extract_emails_from_text(snippet + " " + title)
                     filtered_emails = filter_company_emails(emails)
-                    
-                    if filtered_emails:
-                        # Return the domain of the first company email found
-                        return filtered_emails[0].split("@")[-1], website_url
+                    all_found_emails.extend(filtered_emails)
+            
+            # Prioritize emails with domains that match the company name
+            for email in all_found_emails:
+                email_domain = email.split("@")[-1]
+                if is_domain_relevant(email_domain, company_name):
+                    print(f"Found relevant email domain: {email_domain} for {company_name}")
+                    return email_domain, website_url
+            
+            # If no relevant domain found, don't return unrelated emails
+            # Let the fallback strategies handle it
+            if all_found_emails:
+                print(f"Found emails but none match company name: {all_found_emails}")
             
             return None, website_url
             
