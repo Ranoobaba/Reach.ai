@@ -1,6 +1,6 @@
 import re
 import requests
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 from ddgs import DDGS
 
 # Import cache functions
@@ -11,7 +11,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
 }
 
-# Jina Reader API (completely free, no API key needed)
+# Jina Reader API - free, no API key needed, gets clean text from any URL
 JINA_READER_URL = "https://r.jina.ai/"
 
 # Domains to ALWAYS exclude - these are never company email domains
@@ -24,7 +24,7 @@ EXCLUDED_DOMAINS = {
     # Business info
     "crunchbase.com", "bloomberg.com", "forbes.com", "reuters.com",
     "glassdoor.com", "indeed.com", "yelp.com", "g2.com", "trustpilot.com",
-    # Email finder tools (competitors)
+    # Email finder tools
     "rocketreach.co", "hunter.io", "signalhire.com", "zoominfo.com", 
     "apollo.io", "lusha.com", "clearbit.com",
     # Tech/code
@@ -32,21 +32,7 @@ EXCLUDED_DOMAINS = {
     # Email providers
     "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", "icloud.com",
     "aol.com", "protonmail.com", "mail.com", "live.com", "msn.com",
-    # Support subdomains
-    "help.x.com", "support.google.com",
 }
-
-
-def extract_domain_from_url(url: str) -> str:
-    """Extract the main domain from a URL."""
-    try:
-        parsed = urlparse(url)
-        domain = parsed.netloc.lower()
-        if domain.startswith("www."):
-            domain = domain[4:]
-        return domain
-    except Exception:
-        return ""
 
 
 def get_base_domain(domain: str) -> str:
@@ -59,8 +45,10 @@ def get_base_domain(domain: str) -> str:
 
 def is_excluded(domain: str) -> bool:
     """Check if domain is in exclusion list."""
+    if not domain:
+        return True
     base = get_base_domain(domain)
-    return base in EXCLUDED_DOMAINS or domain in EXCLUDED_DOMAINS
+    return base in EXCLUDED_DOMAINS or domain.lower() in EXCLUDED_DOMAINS
 
 
 def extract_emails_from_text(text: str) -> list[str]:
@@ -69,7 +57,8 @@ def extract_emails_from_text(text: str) -> list[str]:
         return []
     email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b'
     emails = re.findall(email_pattern, text, re.IGNORECASE)
-    # Filter out excluded domains and return unique
+    
+    # Filter and dedupe
     valid_emails = []
     seen = set()
     for email in emails:
@@ -86,51 +75,138 @@ def normalize_company(name: str) -> str:
     return name.lower().replace(" ", "").replace("-", "").replace(".", "").replace("_", "")
 
 
-def domain_matches_company(domain: str, company: str) -> tuple[bool, int]:
+def crawl_website(url: str) -> str | None:
     """
-    Check if domain matches company name.
-    Returns (matches, score) where higher score = better match.
-    
-    Examples:
-    - spacex.com matches SpaceX (score: 100, exact)
-    - tesla.com matches Tesla (score: 100, exact)
-    - trycua.com matches CUA (score: 80, contains)
+    Use Jina Reader to crawl a website and get clean text.
+    Jina handles JavaScript rendering, bypasses some blocks, etc.
     """
-    company_norm = normalize_company(company)
-    domain_name = get_base_domain(domain).split(".")[0]  # spacex.com -> spacex
-    
-    # Exact match
-    if domain_name == company_norm:
-        return True, 100
-    
-    # Domain contains company name exactly
-    if company_norm in domain_name and len(company_norm) >= 3:
-        # Penalize if domain has extra stuff (teslamotorsclub vs tesla)
-        extra_chars = len(domain_name) - len(company_norm)
-        if extra_chars <= 3:  # tryspacex, getspacex are ok
-            return True, 90 - extra_chars
-        elif extra_chars <= 6:
-            return True, 70 - extra_chars
-        else:
-            return False, 0  # Too different (teslamotorsclub)
-    
-    # Company contains domain
-    if domain_name in company_norm and len(domain_name) >= 3:
-        return True, 60
-    
-    return False, 0
-
-
-def crawl_with_jina(url: str) -> str | None:
-    """Use Jina Reader to get page content."""
     try:
-        response = requests.get(f"{JINA_READER_URL}{url}", headers=HEADERS, timeout=30)
+        jina_url = f"{JINA_READER_URL}{url}"
+        print(f"  Crawling: {url}")
+        response = requests.get(jina_url, headers=HEADERS, timeout=30)
         if response.status_code == 200:
             return response.text
+        print(f"  Jina returned {response.status_code}")
         return None
     except Exception as e:
-        print(f"Jina error: {e}")
+        print(f"  Crawl error: {e}")
         return None
+
+
+def find_company_website(company_name: str) -> str | None:
+    """
+    Search DuckDuckGo to find the company's official website.
+    Returns the URL of the most likely official site.
+    """
+    try:
+        with DDGS() as ddgs:
+            # Try multiple search queries
+            queries = [
+                f"{company_name} official website",
+                f"{company_name} company",
+                f'"{company_name}"',
+            ]
+            
+            for query in queries:
+                print(f"  Searching: {query}")
+                results = list(ddgs.text(query, max_results=5))
+                
+                for result in results:
+                    url = result.get("href", "") or result.get("link", "")
+                    if not url:
+                        continue
+                    
+                    try:
+                        parsed = urlparse(url)
+                        domain = parsed.netloc.lower()
+                        if domain.startswith("www."):
+                            domain = domain[4:]
+                        
+                        # Skip excluded domains
+                        if is_excluded(domain):
+                            continue
+                        
+                        # Return the website URL
+                        website_url = f"{parsed.scheme}://{parsed.netloc}"
+                        print(f"  Found website: {website_url}")
+                        return website_url
+                        
+                    except Exception:
+                        continue
+            
+            return None
+            
+    except Exception as e:
+        print(f"  Search error: {e}")
+        return None
+
+
+def find_emails_on_website(website_url: str) -> list[str]:
+    """
+    Crawl a website to find email addresses.
+    Checks the homepage and common contact pages.
+    """
+    all_emails = []
+    
+    # Pages to check for contact info
+    pages_to_check = [
+        "",           # Homepage
+        "/contact",
+        "/contact-us", 
+        "/about",
+        "/support",
+        "/help",
+    ]
+    
+    for page in pages_to_check:
+        page_url = urljoin(website_url, page)
+        content = crawl_website(page_url)
+        
+        if content:
+            emails = extract_emails_from_text(content)
+            if emails:
+                print(f"  Found emails on {page_url}: {emails}")
+                all_emails.extend(emails)
+                # If we found emails, we can stop
+                break
+    
+    return list(set(all_emails))
+
+
+def get_best_email_domain(emails: list[str], company_name: str) -> str | None:
+    """
+    From a list of emails, find the most likely company email domain.
+    Prioritizes domains that match the company name.
+    """
+    if not emails:
+        return None
+    
+    company_norm = normalize_company(company_name)
+    
+    # Score each domain
+    domain_scores = {}
+    for email in emails:
+        domain = email.split("@")[-1]
+        base = get_base_domain(domain)
+        domain_name = base.split(".")[0]
+        
+        # Calculate match score
+        if domain_name == company_norm:
+            score = 100  # Exact match
+        elif company_norm in domain_name:
+            score = 80   # Company name in domain
+        elif domain_name in company_norm:
+            score = 60   # Domain in company name
+        else:
+            score = 40   # No match but found on company site
+        
+        if base not in domain_scores or score > domain_scores[base]:
+            domain_scores[base] = score
+    
+    if domain_scores:
+        return max(domain_scores.keys(), key=lambda d: domain_scores[d])
+    
+    return None
 
 
 def find_company_domain(company_name: str, skip_cache: bool = False) -> dict:
@@ -139,118 +215,80 @@ def find_company_domain(company_name: str, skip_cache: bool = False) -> dict:
     
     Strategy:
     1. Check cache first
-    2. Search DuckDuckGo for "{company} email" to find email addresses
-    3. Score found domains by how well they match company name
-    4. Return best matching domain
+    2. Search DuckDuckGo to find company's official website
+    3. Crawl the website to find email addresses
+    4. Extract the email domain
+    5. Cache and return
     """
-    print(f"\n{'='*50}")
+    print(f"\n{'='*60}")
     print(f"Finding email domain for: {company_name}")
-    print(f"{'='*50}")
+    print(f"{'='*60}")
     
-    # Check cache first
+    # Step 1: Check cache
     if not skip_cache:
         cached = get_cached_domain(company_name)
         if cached and not is_excluded(cached['email_domain']):
             print(f"✓ Cache hit: {cached['email_domain']}")
             return cached
     
-    print("Searching...")
+    # Step 2: Find company website
+    print("\nStep 1: Finding company website...")
+    website_url = find_company_website(company_name)
     
-    # Collect all found domains with scores
-    domain_scores = {}  # domain -> (score, source_url)
-    
-    try:
-        with DDGS() as ddgs:
-            # Search queries designed to find company emails
-            queries = [
-                f"{company_name} contact email",
-                f"{company_name} email address",
-                f"email @{company_name.lower().replace(' ', '')}",
-                f"{company_name} official website",
-            ]
-            
-            for query in queries:
-                print(f"  Query: {query}")
-                try:
-                    results = list(ddgs.text(query, max_results=8))
-                except Exception as e:
-                    print(f"  Search error: {e}")
-                    continue
-                
-                for result in results:
-                    snippet = result.get("body", "") or result.get("snippet", "")
-                    title = result.get("title", "")
-                    url = result.get("href", "") or result.get("link", "")
-                    
-                    # Extract emails from snippet
-                    emails = extract_emails_from_text(f"{snippet} {title}")
-                    for email in emails:
-                        domain = email.split("@")[-1]
-                        matches, score = domain_matches_company(domain, company_name)
-                        if matches and score > domain_scores.get(domain, (0, ""))[0]:
-                            domain_scores[domain] = (score, url)
-                            print(f"    Found email domain: {domain} (score: {score})")
-                    
-                    # Also check the URL domain
-                    if url:
-                        url_domain = extract_domain_from_url(url)
-                        if url_domain and not is_excluded(url_domain):
-                            base = get_base_domain(url_domain)
-                            matches, score = domain_matches_company(base, company_name)
-                            # URL domains get slightly lower score than email domains
-                            score = int(score * 0.9)
-                            if matches and score > domain_scores.get(base, (0, ""))[0]:
-                                domain_scores[base] = (score, url)
-                                print(f"    Found URL domain: {base} (score: {score})")
-    
-    except Exception as e:
-        print(f"Search error: {e}")
-    
-    # Return best scoring domain
-    if domain_scores:
-        best_domain = max(domain_scores.keys(), key=lambda d: domain_scores[d][0])
-        score, source_url = domain_scores[best_domain]
-        print(f"\n✓ Best match: {best_domain} (score: {score})")
-        
-        # Cache result
-        cache_domain(company_name, best_domain, source_url, source="search")
+    if not website_url:
+        print(f"✗ Could not find website for {company_name}")
         return {
             "company_name": company_name,
-            "email_domain": best_domain,
-            "website_url": source_url,
-            "source": "search",
-            "from_cache": False
+            "email_domain": None,
+            "website_url": None,
+            "source": None,
+            "from_cache": False,
+            "error": "Could not find company website"
         }
     
-    # Fallback: Try to crawl {company}.com directly
-    print("\nNo email found in search, trying direct domain...")
-    company_domain = f"{normalize_company(company_name)}.com"
-    test_url = f"https://{company_domain}"
+    # Step 3: Crawl website to find emails
+    print(f"\nStep 2: Crawling {website_url} to find emails...")
+    emails = find_emails_on_website(website_url)
     
-    try:
-        # Quick check if domain exists
-        response = requests.head(test_url, timeout=5, allow_redirects=True)
-        if response.status_code < 400:
-            final_domain = extract_domain_from_url(response.url) or company_domain
-            base = get_base_domain(final_domain)
-            print(f"✓ Direct domain works: {base}")
-            cache_domain(company_name, base, test_url, source="direct")
+    if emails:
+        # Step 4: Get best matching domain from emails
+        email_domain = get_best_email_domain(emails, company_name)
+        if email_domain:
+            print(f"\n✓ Found email domain: {email_domain}")
+            cache_domain(company_name, email_domain, website_url, source="crawl")
             return {
                 "company_name": company_name,
-                "email_domain": base,
-                "website_url": response.url,
-                "source": "direct",
+                "email_domain": email_domain,
+                "website_url": website_url,
+                "source": "crawl",
                 "from_cache": False
             }
-    except Exception as e:
-        print(f"Direct domain check failed: {e}")
     
-    print(f"✗ Could not find domain for {company_name}")
-    return {
-        "company_name": company_name,
-        "email_domain": None,
-        "website_url": None,
-        "source": None,
-        "from_cache": False,
-        "error": "Could not find company email domain"
-    }
+    # Step 5: Fallback - use the website domain
+    print("\nNo emails found, falling back to website domain...")
+    try:
+        parsed = urlparse(website_url)
+        domain = parsed.netloc.lower()
+        if domain.startswith("www."):
+            domain = domain[4:]
+        base_domain = get_base_domain(domain)
+        
+        print(f"✓ Using website domain: {base_domain}")
+        cache_domain(company_name, base_domain, website_url, source="fallback")
+        return {
+            "company_name": company_name,
+            "email_domain": base_domain,
+            "website_url": website_url,
+            "source": "fallback",
+            "from_cache": False
+        }
+    except Exception as e:
+        print(f"✗ Error: {e}")
+        return {
+            "company_name": company_name,
+            "email_domain": None,
+            "website_url": website_url,
+            "source": None,
+            "from_cache": False,
+            "error": str(e)
+        }
