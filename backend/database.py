@@ -229,6 +229,32 @@ def bulk_import_domains(entries: list[dict]):
         print(f"Imported {len(entries)} entries")
 
 
+def delete_cached_domain(company_name: str) -> bool:
+    """
+    Delete a company from the cache.
+    Returns True if deleted, False if not found.
+    """
+    normalized = normalize_company_name(company_name)
+    
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            DELETE FROM company_domains
+            WHERE company_name_normalized = ?
+        """, (normalized,))
+        
+        deleted = cursor.rowcount > 0
+        conn.commit()
+        
+        if deleted:
+            print(f"Deleted cache entry for: {company_name}")
+        else:
+            print(f"No cache entry found for: {company_name}")
+        
+        return deleted
+
+
 # Initialize the database when module is imported
 init_db()
 

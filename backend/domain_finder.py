@@ -108,18 +108,32 @@ def is_domain_relevant(domain: str, company_name: str) -> bool:
     domain_lower = domain.lower()
     company_lower = company_name.lower().replace(" ", "").replace("-", "").replace(".", "")
     
+    # Exclude known bad domains that often appear in search results
+    bad_domains = [
+        "x.com", "twitter.com", "help.x.com", "support.google.com",
+        "help.instagram.com", "support.apple.com", "answers.microsoft.com"
+    ]
+    if any(bad in domain_lower for bad in bad_domains):
+        return False
+    
     # Remove common TLDs and prefixes for comparison
-    domain_base = domain_lower.split(".")[0]
+    # Handle subdomains like "help.company.com" -> check "company"
+    domain_parts = domain_lower.split(".")
+    domain_bases = [domain_parts[0]]  # First part
+    if len(domain_parts) >= 2:
+        domain_bases.append(domain_parts[-2])  # Second-to-last part (main domain)
     
-    # Check if company name is in the domain or vice versa
-    if company_lower in domain_base or domain_base in company_lower:
-        return True
-    
-    # Check for partial matches (at least 4 chars matching)
-    if len(company_lower) >= 4 and company_lower[:4] in domain_base:
-        return True
-    if len(domain_base) >= 4 and domain_base[:4] in company_lower:
-        return True
+    for domain_base in domain_bases:
+        # Check if company name is in the domain or vice versa
+        if company_lower in domain_base or domain_base in company_lower:
+            return True
+        
+        # Check for partial matches (at least 3 chars matching for short names)
+        min_match = 3 if len(company_lower) <= 4 else 4
+        if len(company_lower) >= min_match and company_lower[:min_match] in domain_base:
+            return True
+        if len(domain_base) >= min_match and domain_base[:min_match] in company_lower:
+            return True
     
     return False
 

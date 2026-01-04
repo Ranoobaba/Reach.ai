@@ -7,7 +7,7 @@ from typing import Optional
 
 from domain_finder import find_company_domain
 from permutator import generate_email_permutations
-from database import get_cache_stats, search_cache, bulk_import_domains, get_cached_domain
+from database import get_cache_stats, search_cache, bulk_import_domains, get_cached_domain, delete_cached_domain
 
 # Load environment variables
 load_dotenv()
@@ -160,6 +160,15 @@ def import_domains(request: BulkImportRequest):
     
     bulk_import_domains(request.entries)
     return {"imported": len(request.entries), "status": "success"}
+
+
+@app.delete("/api/cache/{company_name}")
+def delete_cache_entry(company_name: str):
+    """Delete a company from the cache to force a fresh lookup."""
+    deleted = delete_cached_domain(company_name)
+    if deleted:
+        return {"status": "deleted", "company_name": company_name}
+    return {"status": "not_found", "company_name": company_name}
 
 
 if __name__ == "__main__":
