@@ -196,17 +196,21 @@ export default function Home() {
                     </div>
                   </div>
 
-                  {/* Footer with count and actions */}
-                  <div className="flex items-center justify-between text-sm text-zinc-400">
-                    <span>{result.emails.length} emails generated</span>
-                    <div className="flex items-center gap-3">
+                  {/* Footer with count and action buttons */}
+                  <div className="space-y-3">
+                    <div className="text-center text-sm text-zinc-400">
+                      {result.emails.length} emails generated
+                    </div>
+                    <div className="flex gap-3">
                       <button 
                         onClick={handleCopyAll}
-                        className="hover:text-emerald-400 transition-colors flex items-center gap-1"
+                        className="flex-1 py-2.5 px-4 bg-zinc-700 hover:bg-zinc-600 
+                                   text-white font-medium rounded-lg transition-all duration-200
+                                   flex items-center justify-center gap-2"
                       >
                         {copied ? (
                           <>
-                            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-4 h-4 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                             </svg>
                             Copied!
@@ -221,12 +225,19 @@ export default function Home() {
                           </>
                         )}
                       </button>
-                      <span className="text-zinc-600">—</span>
+
                       <button 
                         onClick={handleOpenEmail}
-                        className="hover:text-emerald-400 transition-colors"
+                        className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 
+                                   text-white font-medium rounded-lg transition-all duration-200
+                                   shadow-lg shadow-emerald-600/20 hover:shadow-emerald-500/30
+                                   flex items-center justify-center gap-2"
                       >
-                        Open in Gmail
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                                d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Open in Email
                       </button>
                     </div>
                   </div>
