@@ -292,21 +292,21 @@ export default function Home() {
             <div className="flex animate-marquee">
               {/* First set of logos */}
               <div className="flex items-center gap-16 px-8 shrink-0">
-                <img src="/logos/berkeley.png" alt="UC Berkeley" className="h-8 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/amazon.png" alt="Amazon" className="h-7 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/agi.svg" alt="AGI Inc" className="h-8 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/apollo.png" alt="Apollo.ai" className="h-7 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/langchain.png" alt="LangChain" className="h-7 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/llamaindex.png" alt="LlamaIndex" className="h-7 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
+                <img src="/logos/berkeley.png" alt="UC Berkeley" className="h-8 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/amazon.png" alt="Amazon" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/agi.svg" alt="AGI Inc" className="h-8 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/apollo.png" alt="Apollo.ai" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/langchain.png" alt="LangChain" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/llamaindex.png" alt="LlamaIndex" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
               </div>
               {/* Duplicate set for seamless loop */}
               <div className="flex items-center gap-16 px-8 shrink-0">
-                <img src="/logos/berkeley.png" alt="UC Berkeley" className="h-8 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/amazon.png" alt="Amazon" className="h-7 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/agi.svg" alt="AGI Inc" className="h-8 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/apollo.png" alt="Apollo.ai" className="h-7 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/langchain.png" alt="LangChain" className="h-7 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
-                <img src="/logos/llamaindex.png" alt="LlamaIndex" className="h-7 w-auto object-contain grayscale opacity-60 hover:opacity-100 hover:grayscale-0 transition-all" />
+                <img src="/logos/berkeley.png" alt="UC Berkeley" className="h-8 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/amazon.png" alt="Amazon" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/agi.svg" alt="AGI Inc" className="h-8 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/apollo.png" alt="Apollo.ai" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/langchain.png" alt="LangChain" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/llamaindex.png" alt="LlamaIndex" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
               </div>
             </div>
           </div>
