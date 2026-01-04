@@ -276,8 +276,72 @@ export default function Home() {
           </div>
         )}
 
+        {/* Trusted By Section */}
+        <div className="max-w-4xl mx-auto mt-16 pt-10 border-t border-zinc-800">
+          <p className="text-center text-zinc-500 text-sm mb-8">
+            Trusted by students and professionals at
+          </p>
+          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12 opacity-60">
+            {/* UC Berkeley */}
+            <div className="flex items-center gap-2">
+              <img 
+                src="/logos/berkeley.png" 
+                alt="UC Berkeley"
+                className="h-8 w-auto object-contain brightness-0 invert opacity-70"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+              />
+              <span className="hidden text-zinc-400 font-semibold text-lg tracking-tight">UC Berkeley</span>
+            </div>
+            
+            {/* Amazon */}
+            <div className="flex items-center gap-2">
+              <img 
+                src="/logos/amazon.png" 
+                alt="Amazon"
+                className="h-7 w-auto object-contain brightness-0 invert opacity-70"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+              />
+              <span className="hidden text-zinc-400 font-semibold text-xl tracking-tight">amazon</span>
+            </div>
+            
+            {/* AGI Inc */}
+            <div className="flex items-center gap-2">
+              <img 
+                src="/logos/agi.png" 
+                alt="AGI Inc"
+                className="h-8 w-auto object-contain brightness-0 invert opacity-70"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+              />
+              <span className="hidden text-zinc-400 font-bold text-lg">AGI Inc</span>
+            </div>
+            
+            {/* Apollo.ai */}
+            <div className="flex items-center gap-2">
+              <img 
+                src="/logos/apollo.png" 
+                alt="Apollo.ai"
+                className="h-7 w-auto object-contain brightness-0 invert opacity-70"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  e.target.nextSibling.style.display = 'block';
+                }}
+              />
+              <span className="hidden text-zinc-400 font-semibold text-lg">Apollo.ai</span>
+            </div>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="text-center mt-10 text-zinc-600 text-sm">
+        <div className="text-center mt-12 pb-8 text-zinc-600 text-sm">
           <p>Free email domain lookup with caching</p>
         </div>
       </div>
