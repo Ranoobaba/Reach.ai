@@ -25,7 +25,9 @@ EXCLUDED_DOMAINS = {
     "crunchbase.com", "bloomberg.com", "forbes.com", "reuters.com",
     "glassdoor.com", "indeed.com", "yelp.com", "g2.com", "trustpilot.com",
     # Startup/VC directories
-    "ycombinator.com", "techcrunch.com", "producthunt.com", "angel.co", "angellist.com",
+    "ycombinator.com", "workatastartup.com", "techcrunch.com", "producthunt.com", "angel.co", "angellist.com",
+    # AI aggregators
+    "aipure.ai", "theresanaiforthat.com", "toolify.ai", "futurepedia.io",
     # Email finder tools
     "rocketreach.co", "hunter.io", "signalhire.com", "zoominfo.com", 
     "apollo.io", "lusha.com", "clearbit.com",
@@ -109,6 +111,109 @@ def crawl_website(url: str) -> str | None:
         return None
 
 
+def find_domain_from_email_finders(company_name: str, website_domain: str | None = None) -> str | None:
+    """
+    Search email finder sites (RocketReach, Apollo, etc.) to find the company's email domain.
+    These sites have already done the research to find correct email domains.
+    We extract the domain info from search snippets (since crawling often fails due to 403s).
+    
+    If website_domain is provided, we prioritize results matching that domain.
+    """
+    print(f"  Searching email finder sites for: {company_name}")
+    
+    # Extract base name from website domain if provided (e.g., "braintrust" from "braintrust.dev")
+    website_base = None
+    if website_domain:
+        website_base = get_base_domain(website_domain).split(".")[0].lower()
+        print(f"    Website base name: {website_base}")
+    
+    # Sites to search - prioritize searches with the website domain if we have it
+    email_finder_queries = []
+    
+    if website_domain:
+        # Search specifically for this domain's email format
+        email_finder_queries.extend([
+            f'"{website_domain}" email format site:rocketreach.co',
+            f'"{website_domain}" email site:signalhire.com',
+            f'{website_base} email format site:rocketreach.co',
+        ])
+    
+    # Fallback to company name searches
+    email_finder_queries.extend([
+        f'"{company_name}" email format site:rocketreach.co',
+        f'"{company_name}" email format site:signalhire.com',
+        f'"{company_name}" email site:apollo.io',
+    ])
+    
+    try:
+        with DDGS() as ddgs:
+            for query in email_finder_queries:
+                print(f"    Searching: {query}")
+                results = list(ddgs.text(query, max_results=5))
+                
+                for result in results:
+                    # First, try to extract email domain from the search snippet/body
+                    # This often contains the actual email pattern without needing to crawl
+                    snippet = result.get("body", "") or result.get("snippet", "")
+                    title = result.get("title", "")
+                    combined_text = f"{title} {snippet}"
+                    
+                    # Look for email patterns in snippets (e.g., "name@usebraintrust.com")
+                    # Also handle spaced domains from RocketReach like "r******@ sonauto .ai"
+                    email_pattern = r'\b[A-Za-z0-9._%*+-]+\s*@\s*([A-Za-z0-9.-]+)\s*\.\s*([A-Z|a-z]{2,})\b'
+                    raw_matches = re.findall(email_pattern, combined_text, re.IGNORECASE)
+                    # Reconstruct domain from parts (handling spaces)
+                    matches = [f"{m[0].strip()}.{m[1].strip()}" for m in raw_matches]
+                    
+                    for domain in matches:
+                        domain_lower = domain.lower()
+                        base = get_base_domain(domain_lower)
+                        domain_base_name = base.split(".")[0].lower()
+                        
+                        if is_excluded(base):
+                            continue
+                        
+                        # If we have a website domain, prioritize matches
+                        if website_base:
+                            # Check if this domain matches our website
+                            if website_base in domain_base_name or domain_base_name in website_base:
+                                print(f"    Found matching domain from search snippet: {base}")
+                                return base
+                            else:
+                                # Domain doesn't match website, skip it
+                                continue
+                        else:
+                            # No website domain to validate against, accept first valid result
+                            print(f"    Found domain from search snippet: {base}")
+                            return base
+                    
+                    # If no email in snippet, try crawling the page
+                    url = result.get("href", "") or result.get("link", "")
+                    if url:
+                        content = crawl_website(url)
+                        if content:
+                            # Extract emails from the page
+                            emails = extract_emails_from_text(content)
+                            
+                            if emails:
+                                # Get the most common domain from found emails
+                                domain_counts = {}
+                                for email in emails:
+                                    email_domain = email.split("@")[-1]
+                                    base = get_base_domain(email_domain)
+                                    domain_counts[base] = domain_counts.get(base, 0) + 1
+                                
+                                if domain_counts:
+                                    best_domain = max(domain_counts.keys(), key=lambda d: domain_counts[d])
+                                    print(f"    Found domain from email finder page: {best_domain}")
+                                    return best_domain
+                            
+    except Exception as e:
+        print(f"    Email finder search error: {e}")
+    
+    return None
+
+
 def find_company_website(company_name: str) -> str | None:
     """
     Search DuckDuckGo to find the company's official website.
@@ -127,35 +232,19 @@ def find_company_website(company_name: str) -> str | None:
         except Exception:
             pass
     
-    # First, try direct domain check for {company}.com
     normalized = normalize_company(company_name)
-    direct_domains = [
-        f"{normalized}.com",
-        f"try{normalized}.com",
-        f"get{normalized}.com",
-        f"{normalized}.ai",
-        f"{normalized}.io",
-    ]
     
-    for direct_domain in direct_domains:
-        try:
-            test_url = f"https://{direct_domain}"
-            response = requests.head(test_url, timeout=5, allow_redirects=True, headers=HEADERS)
-            if response.status_code < 400:
-                print(f"  Direct domain found: {direct_domain}")
-                return test_url
-        except Exception:
-            continue
-    
-    # Fall back to DuckDuckGo search
+    # SEARCH FIRST - DuckDuckGo is more reliable than direct domain guessing
+    # Direct domain guessing often returns wrong domains (e.g., braintrust.com instead of usebraintrust.com)
     try:
         with DDGS() as ddgs:
-            # Try multiple search queries - prioritize tech/startup context
+            # Try multiple search queries - prioritize tech/AI/startup context
+            # Be more specific to find the right company
             queries = [
-                f"{company_name} company website",
-                f"{company_name} startup",
-                f"{company_name} official website",
-                f'"{company_name}" company',
+                f'"{company_name}" AI startup official website',
+                f'"{company_name}" tech company website',
+                f'"{company_name}" software company',
+                f"{company_name} startup homepage",
             ]
             
             for query in queries:
@@ -185,11 +274,31 @@ def find_company_website(company_name: str) -> str | None:
                     except Exception:
                         continue
             
-            return None
-            
     except Exception as e:
         print(f"  Search error: {e}")
-        return None
+    
+    # FALLBACK: Try direct domain guessing only if search failed
+    print(f"  Search failed, trying direct domain guessing...")
+    direct_domains = [
+        f"{normalized}.com",
+        f"use{normalized}.com",
+        f"try{normalized}.com",
+        f"get{normalized}.com",
+        f"{normalized}.ai",
+        f"{normalized}.io",
+    ]
+    
+    for direct_domain in direct_domains:
+        try:
+            test_url = f"https://{direct_domain}"
+            response = requests.head(test_url, timeout=5, allow_redirects=True, headers=HEADERS)
+            if response.status_code < 400:
+                print(f"  Direct domain found: {direct_domain}")
+                return test_url
+        except Exception:
+            continue
+    
+    return None
 
 
 def find_emails_on_website(website_url: str) -> list[str]:
@@ -315,8 +424,32 @@ def find_company_domain(company_name: str, skip_cache: bool = False) -> dict:
                 "from_cache": False
             }
     
-    # Step 5: Fallback - use the website domain
-    print("\nNo emails found, falling back to website domain...")
+    # Step 5: Try email finder sites (RocketReach, Apollo, Hunter, etc.)
+    print("\nNo emails found on website, trying email finder sites...")
+    
+    # Extract domain from website URL to help validate email finder results
+    try:
+        parsed = urlparse(website_url)
+        website_domain = parsed.netloc.lower()
+        if website_domain.startswith("www."):
+            website_domain = website_domain[4:]
+    except:
+        website_domain = None
+    
+    email_finder_domain = find_domain_from_email_finders(company_name, website_domain)
+    if email_finder_domain:
+        print(f"\n✓ Found email domain from email finder: {email_finder_domain}")
+        cache_domain(company_name, email_finder_domain, website_url, source="email_finder")
+        return {
+            "company_name": company_name,
+            "email_domain": email_finder_domain,
+            "website_url": website_url,
+            "source": "email_finder",
+            "from_cache": False
+        }
+    
+    # Step 6: Final fallback - use the website domain
+    print("\nNo domain found from email finders, falling back to website domain...")
     try:
         parsed = urlparse(website_url)
         domain = parsed.netloc.lower()
