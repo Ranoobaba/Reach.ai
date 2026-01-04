@@ -135,6 +135,9 @@ export default function Home() {
                                text-white placeholder-zinc-500 focus:outline-none focus:ring-2 
                                focus:ring-emerald-500 focus:border-transparent transition-all"
                   />
+                  <p className="text-xs text-zinc-500">
+                    Use full company name for best results (e.g., &quot;Nixo YC S25&quot; not just &quot;Nixo&quot;)
+                  </p>
                 </div>
 
                 {error && (
