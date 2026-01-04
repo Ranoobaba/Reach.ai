@@ -24,6 +24,8 @@ EXCLUDED_DOMAINS = {
     # Business info
     "crunchbase.com", "bloomberg.com", "forbes.com", "reuters.com",
     "glassdoor.com", "indeed.com", "yelp.com", "g2.com", "trustpilot.com",
+    # Startup/VC directories
+    "ycombinator.com", "techcrunch.com", "producthunt.com", "angel.co", "angellist.com",
     # Email finder tools
     "rocketreach.co", "hunter.io", "signalhire.com", "zoominfo.com", 
     "apollo.io", "lusha.com", "clearbit.com",
@@ -75,6 +77,20 @@ def normalize_company(name: str) -> str:
     return name.lower().replace(" ", "").replace("-", "").replace(".", "").replace("_", "")
 
 
+def is_domain_input(name: str) -> str | None:
+    """
+    Check if the input looks like a domain name.
+    Returns the domain if it is, None otherwise.
+    """
+    name_lower = name.lower().strip()
+    # Common TLDs
+    tlds = [".com", ".io", ".ai", ".dev", ".co", ".org", ".net", ".app", ".xyz"]
+    for tld in tlds:
+        if name_lower.endswith(tld):
+            return name_lower
+    return None
+
+
 def crawl_website(url: str) -> str | None:
     """
     Use Jina Reader to crawl a website and get clean text.
@@ -98,13 +114,48 @@ def find_company_website(company_name: str) -> str | None:
     Search DuckDuckGo to find the company's official website.
     Returns the URL of the most likely official site.
     """
+    # Check if user provided a domain directly (e.g., "a0.dev")
+    domain_input = is_domain_input(company_name)
+    if domain_input:
+        # User provided a domain, use it directly
+        try:
+            test_url = f"https://{domain_input}"
+            response = requests.head(test_url, timeout=5, allow_redirects=True, headers=HEADERS)
+            if response.status_code < 400:
+                print(f"  User provided domain: {domain_input}")
+                return test_url
+        except Exception:
+            pass
+    
+    # First, try direct domain check for {company}.com
+    normalized = normalize_company(company_name)
+    direct_domains = [
+        f"{normalized}.com",
+        f"try{normalized}.com",
+        f"get{normalized}.com",
+        f"{normalized}.ai",
+        f"{normalized}.io",
+    ]
+    
+    for direct_domain in direct_domains:
+        try:
+            test_url = f"https://{direct_domain}"
+            response = requests.head(test_url, timeout=5, allow_redirects=True, headers=HEADERS)
+            if response.status_code < 400:
+                print(f"  Direct domain found: {direct_domain}")
+                return test_url
+        except Exception:
+            continue
+    
+    # Fall back to DuckDuckGo search
     try:
         with DDGS() as ddgs:
-            # Try multiple search queries
+            # Try multiple search queries - prioritize tech/startup context
             queries = [
+                f"{company_name} company website",
+                f"{company_name} startup",
                 f"{company_name} official website",
-                f"{company_name} company",
-                f'"{company_name}"',
+                f'"{company_name}" company',
             ]
             
             for query in queries:
