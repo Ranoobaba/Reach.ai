@@ -17,6 +17,19 @@ HEADERS = {
 # Jina Reader API (completely free, no API key needed)
 JINA_READER_URL = "https://r.jina.ai/"
 
+# Domains to always exclude from results
+EXCLUDED_DOMAINS = [
+    "wikipedia.org", "linkedin.com", "facebook.com",
+    "twitter.com", "x.com", "youtube.com", "instagram.com",
+    "crunchbase.com", "bloomberg.com", "forbes.com",
+    "reuters.com", "glassdoor.com", "indeed.com",
+    "rocketreach.co", "hunter.io", "signalhire.com",
+    "zoominfo.com", "apollo.io", "yelp.com", "g2.com",
+    "reddit.com", "quora.com", "medium.com", "github.com",
+    "help.x.com", "support.google.com", "help.instagram.com",
+    "support.apple.com", "answers.microsoft.com"
+]
+
 
 def extract_domain_from_url(url: str) -> str:
     """Extract the main domain from a URL."""
@@ -30,6 +43,62 @@ def extract_domain_from_url(url: str) -> str:
         return ""
 
 
+def get_base_domain(domain: str) -> str:
+    """
+    Get the base domain without subdomains.
+    e.g., 'help.tesla.com' -> 'tesla.com'
+    e.g., 'teslamotorsclub.com' -> 'teslamotorsclub.com'
+    """
+    parts = domain.lower().split(".")
+    if len(parts) >= 2:
+        return ".".join(parts[-2:])
+    return domain.lower()
+
+
+def get_domain_name(domain: str) -> str:
+    """
+    Get just the domain name without TLD.
+    e.g., 'tesla.com' -> 'tesla'
+    e.g., 'trycua.com' -> 'trycua'
+    """
+    base = get_base_domain(domain)
+    return base.split(".")[0]
+
+
+def is_exact_company_domain(domain: str, company_name: str) -> bool:
+    """
+    Check if domain is an EXACT match for company name.
+    e.g., 'tesla' matches 'tesla.com' but NOT 'teslamotorsclub.com'
+    """
+    if not domain or not company_name:
+        return False
+    
+    company_lower = company_name.lower().replace(" ", "").replace("-", "").replace(".", "")
+    domain_name = get_domain_name(domain)
+    
+    # Exact match
+    if domain_name == company_lower:
+        return True
+    
+    # Handle common patterns like "trycua" for "cua"
+    if domain_name == f"try{company_lower}":
+        return True
+    if domain_name == f"get{company_lower}":
+        return True
+    if domain_name == f"{company_lower}hq":
+        return True
+    if domain_name == f"{company_lower}app":
+        return True
+    
+    return False
+
+
+def is_domain_excluded(domain: str) -> bool:
+    """Check if domain should be excluded."""
+    domain_lower = domain.lower()
+    return any(ex in domain_lower for ex in EXCLUDED_DOMAINS)
+
+
 def extract_emails_from_text(text: str) -> list[str]:
     """Extract all email addresses from text."""
     if not text:
@@ -40,7 +109,7 @@ def extract_emails_from_text(text: str) -> list[str]:
     return [email.lower() for email in emails]
 
 
-def filter_company_emails(emails: list[str], company_domain: str = None) -> list[str]:
+def filter_company_emails(emails: list[str], company_name: str = None) -> list[str]:
     """Filter out common public email providers, keep company emails."""
     excluded_providers = [
         "gmail.com", "yahoo.com", "hotmail.com", "outlook.com", 
@@ -52,14 +121,17 @@ def filter_company_emails(emails: list[str], company_domain: str = None) -> list
     company_emails = []
     for email in emails:
         domain = email.split("@")[-1]
-        if domain not in excluded_providers:
+        if domain not in excluded_providers and not is_domain_excluded(domain):
             company_emails.append(email)
     
     return company_emails
 
 
-def get_email_domain(emails: list[str]) -> str | None:
-    """Get the most likely company email domain from a list of emails."""
+def get_email_domain(emails: list[str], company_name: str = None) -> str | None:
+    """
+    Get the most likely company email domain from a list of emails.
+    Prioritizes exact company name matches.
+    """
     if not emails:
         return None
     
@@ -69,7 +141,13 @@ def get_email_domain(emails: list[str]) -> str | None:
         domain = email.split("@")[-1]
         domain_counts[domain] = domain_counts.get(domain, 0) + 1
     
-    # Return the most common domain
+    # First, look for exact company name matches
+    if company_name:
+        for domain in domain_counts:
+            if is_exact_company_domain(domain, company_name):
+                return domain
+    
+    # Otherwise return the most common domain
     if domain_counts:
         return max(domain_counts, key=domain_counts.get)
     
@@ -96,135 +174,44 @@ def crawl_with_jina(url: str) -> str | None:
         return None
 
 
-def is_domain_relevant(domain: str, company_name: str) -> bool:
+def find_official_website(company_name: str) -> str | None:
     """
-    Check if a domain is relevant to the company name.
-    This helps filter out unrelated domains from search results.
+    Find the company's OFFICIAL website by searching for exact domain matches.
     """
-    if not domain or not company_name:
-        return False
-    
-    # Normalize both for comparison
-    domain_lower = domain.lower()
-    company_lower = company_name.lower().replace(" ", "").replace("-", "").replace(".", "")
-    
-    # Exclude known bad domains that often appear in search results
-    bad_domains = [
-        "x.com", "twitter.com", "help.x.com", "support.google.com",
-        "help.instagram.com", "support.apple.com", "answers.microsoft.com"
-    ]
-    if any(bad in domain_lower for bad in bad_domains):
-        return False
-    
-    # Remove common TLDs and prefixes for comparison
-    # Handle subdomains like "help.company.com" -> check "company"
-    domain_parts = domain_lower.split(".")
-    domain_bases = [domain_parts[0]]  # First part
-    if len(domain_parts) >= 2:
-        domain_bases.append(domain_parts[-2])  # Second-to-last part (main domain)
-    
-    for domain_base in domain_bases:
-        # Check if company name is in the domain or vice versa
-        if company_lower in domain_base or domain_base in company_lower:
-            return True
-        
-        # Check for partial matches (at least 3 chars matching for short names)
-        min_match = 3 if len(company_lower) <= 4 else 4
-        if len(company_lower) >= min_match and company_lower[:min_match] in domain_base:
-            return True
-        if len(domain_base) >= min_match and domain_base[:min_match] in company_lower:
-            return True
-    
-    return False
-
-
-def search_company_contact_email(company_name: str) -> tuple[str | None, str | None]:
-    """
-    Use DuckDuckGo to search directly for company contact/support email.
-    This often returns the email domain in search snippets.
-    Returns: (email_domain, website_url)
-    """
-    website_url = None
-    all_found_emails = []
-    
     try:
         with DDGS() as ddgs:
-            # Search specifically for contact email
+            # Search for official website
             queries = [
-                f"{company_name} official contact email",
-                f"{company_name} company email address",
-                f'"{company_name}" email @',
+                f"{company_name} official site",
+                f"{company_name}.com",
+                f'"{company_name}" company website',
             ]
             
             for query in queries:
-                results = list(ddgs.text(query, max_results=5))
+                results = list(ddgs.text(query, max_results=10))
                 
+                # First pass: look for EXACT domain matches
                 for result in results:
-                    # Capture website URL - prioritize URLs matching company name
                     url = result.get("href", "") or result.get("link", "")
                     if url:
                         domain = extract_domain_from_url(url)
-                        excluded = ["wikipedia.org", "linkedin.com", "facebook.com", 
-                                   "twitter.com", "youtube.com", "crunchbase.com",
-                                   "reddit.com", "quora.com", "medium.com"]
-                        if domain and not any(ex in domain for ex in excluded):
-                            # Prefer URLs that match company name
-                            if not website_url or is_domain_relevant(domain, company_name):
+                        if domain and not is_domain_excluded(domain):
+                            if is_exact_company_domain(domain, company_name):
                                 parsed = urlparse(url)
-                                website_url = f"{parsed.scheme}://{parsed.netloc}"
-                    
-                    # Check snippet/body for email addresses
-                    snippet = result.get("body", "") or result.get("snippet", "")
-                    title = result.get("title", "")
-                    
-                    # Extract emails from the search result
-                    emails = extract_emails_from_text(snippet + " " + title)
-                    filtered_emails = filter_company_emails(emails)
-                    all_found_emails.extend(filtered_emails)
+                                print(f"Found exact match website: {parsed.scheme}://{parsed.netloc}")
+                                return f"{parsed.scheme}://{parsed.netloc}"
             
-            # Prioritize emails with domains that match the company name
-            for email in all_found_emails:
-                email_domain = email.split("@")[-1]
-                if is_domain_relevant(email_domain, company_name):
-                    print(f"Found relevant email domain: {email_domain} for {company_name}")
-                    return email_domain, website_url
-            
-            # If no relevant domain found, don't return unrelated emails
-            # Let the fallback strategies handle it
-            if all_found_emails:
-                print(f"Found emails but none match company name: {all_found_emails}")
-            
-            return None, website_url
-            
-    except Exception as e:
-        print(f"Error searching for contact email: {e}")
-        return None, None
-
-
-def find_company_website(company_name: str) -> str | None:
-    """Use DuckDuckGo to find the company's official website."""
-    try:
-        with DDGS() as ddgs:
-            results = list(ddgs.text(f"{company_name} official website", max_results=5))
-            
-            # Filter out common non-company domains
-            excluded_domains = [
-                "wikipedia.org", "linkedin.com", "facebook.com",
-                "twitter.com", "youtube.com", "instagram.com",
-                "crunchbase.com", "bloomberg.com", "forbes.com",
-                "reuters.com", "glassdoor.com", "indeed.com",
-                "rocketreach.co", "hunter.io", "signalhire.com",
-                "zoominfo.com", "apollo.io", "yelp.com", "g2.com"
-            ]
-            
-            for result in results:
-                url = result.get("href", "") or result.get("link", "")
-                if url:
-                    domain = extract_domain_from_url(url)
-                    if domain and not any(ex in domain for ex in excluded_domains):
-                        # Return the base URL
-                        parsed = urlparse(url)
-                        return f"{parsed.scheme}://{parsed.netloc}"
+            # Second pass: if no exact match, take the first non-excluded result
+            for query in queries[:1]:  # Only use first query for fallback
+                results = list(ddgs.text(query, max_results=5))
+                for result in results:
+                    url = result.get("href", "") or result.get("link", "")
+                    if url:
+                        domain = extract_domain_from_url(url)
+                        if domain and not is_domain_excluded(domain):
+                            parsed = urlparse(url)
+                            print(f"Found fallback website: {parsed.scheme}://{parsed.netloc}")
+                            return f"{parsed.scheme}://{parsed.netloc}"
             
             return None
             
@@ -235,48 +222,35 @@ def find_company_website(company_name: str) -> str | None:
 
 def find_company_domain(company_name: str, skip_cache: bool = False) -> dict:
     """
-    Find the email domain for a company using cache-first strategy:
+    Find the email domain for a company.
     
+    Strategy:
     1. Check cache first (instant, no API calls)
-    2. If not cached, search DuckDuckGo for contact/support email
-    3. If no email found, crawl contact page with Jina Reader
-    4. Fall back to website domain
-    5. Cache the result for future lookups
+    2. Search for the company's official website (exact domain match preferred)
+    3. Use the website domain as the email domain
+    4. Cache the result for future lookups
     
     Returns a dict with domain info and cache status.
     """
+    print(f"\n{'='*50}")
     print(f"Looking up email domain for: {company_name}")
+    print(f"{'='*50}")
     
     # Strategy 0: Check cache first (unless skip_cache is True)
     if not skip_cache:
         cached = get_cached_domain(company_name)
         if cached:
-            print(f"Cache hit! {company_name} → {cached['email_domain']}")
-            return cached
+            # Validate cached result isn't from an excluded domain
+            if not is_domain_excluded(cached['email_domain']):
+                print(f"Cache hit! {company_name} → {cached['email_domain']}")
+                return cached
+            else:
+                print(f"Cached domain {cached['email_domain']} is excluded, searching fresh...")
     
-    print("Cache miss, searching...")
-    website_url = None
+    print("Cache miss, searching for official website...")
     
-    # Strategy 1: Search directly for contact email in DuckDuckGo
-    print("Strategy 1: Searching for contact email in search results...")
-    email_domain, website_url = search_company_contact_email(company_name)
-    
-    if email_domain:
-        print(f"Found email domain from search: {email_domain}")
-        # Cache the result
-        cache_domain(company_name, email_domain, website_url, source="search")
-        return {
-            "company_name": company_name,
-            "email_domain": email_domain,
-            "website_url": website_url,
-            "source": "search",
-            "from_cache": False
-        }
-    
-    # Strategy 2: Find website and crawl contact page
-    print("Strategy 2: Finding company website...")
-    if not website_url:
-        website_url = find_company_website(company_name)
+    # Strategy 1: Find the official company website
+    website_url = find_official_website(company_name)
     
     if not website_url:
         print(f"Could not find website for {company_name}")
@@ -291,49 +265,16 @@ def find_company_domain(company_name: str, skip_cache: bool = False) -> dict:
     
     print(f"Found website: {website_url}")
     website_domain = extract_domain_from_url(website_url)
+    base_domain = get_base_domain(website_domain)
     
-    # Try to find contact page and crawl it with Jina Reader
-    contact_paths = ["/contact", "/contact-us", "/about", "/support", ""]
+    print(f"Using email domain: {base_domain}")
     
-    all_emails = []
-    
-    for path in contact_paths:
-        page_url = urljoin(website_url, path)
-        print(f"Crawling {page_url} with Jina Reader...")
-        
-        content = crawl_with_jina(page_url)
-        if content:
-            emails = extract_emails_from_text(content)
-            filtered = filter_company_emails(emails)
-            
-            if filtered:
-                print(f"Found emails: {filtered}")
-                all_emails.extend(filtered)
-                break  # Found emails, no need to check more pages
-    
-    # Get the most common email domain
-    if all_emails:
-        email_domain = get_email_domain(all_emails)
-        if email_domain:
-            print(f"Email domain found: {email_domain}")
-            # Cache the result
-            cache_domain(company_name, email_domain, website_url, source="crawl")
-            return {
-                "company_name": company_name,
-                "email_domain": email_domain,
-                "website_url": website_url,
-                "source": "crawl",
-                "from_cache": False
-            }
-    
-    # Strategy 3: Fall back to website domain
-    print(f"No emails found, falling back to website domain: {website_domain}")
-    # Cache the fallback result too
-    cache_domain(company_name, website_domain, website_url, source="fallback")
+    # Cache and return the result
+    cache_domain(company_name, base_domain, website_url, source="website")
     return {
         "company_name": company_name,
-        "email_domain": website_domain,
+        "email_domain": base_domain,
         "website_url": website_url,
-        "source": "fallback",
+        "source": "website",
         "from_cache": False
     }
