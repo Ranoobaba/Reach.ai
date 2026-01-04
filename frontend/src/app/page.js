@@ -277,65 +277,37 @@ export default function Home() {
         )}
 
         {/* Trusted By Section */}
-        <div className="max-w-4xl mx-auto mt-16 pt-10 border-t border-zinc-800">
+        <div className="mt-16 pt-10 border-t border-zinc-800">
           <p className="text-center text-zinc-500 text-sm mb-8">
             Trusted by students and professionals at
           </p>
-          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12 opacity-60">
-            {/* UC Berkeley */}
-            <div className="flex items-center gap-2">
-              <img 
-                src="/logos/berkeley.png" 
-                alt="UC Berkeley"
-                className="h-8 w-auto object-contain brightness-0 invert opacity-70"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'block';
-                }}
-              />
-              <span className="hidden text-zinc-400 font-semibold text-lg tracking-tight">UC Berkeley</span>
-            </div>
+          
+          {/* Scrolling logo marquee */}
+          <div className="relative overflow-hidden">
+            {/* Gradient fade edges */}
+            <div className="absolute left-0 top-0 bottom-0 w-20 bg-gradient-to-r from-zinc-950 to-transparent z-10"></div>
+            <div className="absolute right-0 top-0 bottom-0 w-20 bg-gradient-to-l from-zinc-950 to-transparent z-10"></div>
             
-            {/* Amazon */}
-            <div className="flex items-center gap-2">
-              <img 
-                src="/logos/amazon.png" 
-                alt="Amazon"
-                className="h-7 w-auto object-contain brightness-0 invert opacity-70"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'block';
-                }}
-              />
-              <span className="hidden text-zinc-400 font-semibold text-xl tracking-tight">amazon</span>
-            </div>
-            
-            {/* AGI Inc */}
-            <div className="flex items-center gap-2">
-              <img 
-                src="/logos/agi.png" 
-                alt="AGI Inc"
-                className="h-8 w-auto object-contain brightness-0 invert opacity-70"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'block';
-                }}
-              />
-              <span className="hidden text-zinc-400 font-bold text-lg">AGI Inc</span>
-            </div>
-            
-            {/* Apollo.ai */}
-            <div className="flex items-center gap-2">
-              <img 
-                src="/logos/apollo.png" 
-                alt="Apollo.ai"
-                className="h-7 w-auto object-contain brightness-0 invert opacity-70"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  e.target.nextSibling.style.display = 'block';
-                }}
-              />
-              <span className="hidden text-zinc-400 font-semibold text-lg">Apollo.ai</span>
+            {/* Scrolling container */}
+            <div className="flex animate-marquee">
+              {/* First set of logos */}
+              <div className="flex items-center gap-16 px-8 shrink-0">
+                <img src="/logos/berkeley.png" alt="UC Berkeley" className="h-8 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/amazon.png" alt="Amazon" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/agi.png" alt="AGI Inc" className="h-8 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/apollo.png" alt="Apollo.ai" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/langchain.png" alt="LangChain" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/llamaindex.png" alt="LlamaIndex" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+              </div>
+              {/* Duplicate set for seamless loop */}
+              <div className="flex items-center gap-16 px-8 shrink-0">
+                <img src="/logos/berkeley.png" alt="UC Berkeley" className="h-8 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/amazon.png" alt="Amazon" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/agi.png" alt="AGI Inc" className="h-8 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/apollo.png" alt="Apollo.ai" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/langchain.png" alt="LangChain" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+                <img src="/logos/llamaindex.png" alt="LlamaIndex" className="h-7 w-auto object-contain brightness-0 invert opacity-50" />
+              </div>
             </div>
           </div>
         </div>
