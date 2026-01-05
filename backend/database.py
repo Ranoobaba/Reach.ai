@@ -1,5 +1,6 @@
 import sqlite3
 import os
+import json
 from datetime import datetime, timedelta
 from contextlib import contextmanager
 
@@ -42,6 +43,24 @@ def init_db():
                 last_request TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 date TEXT NOT NULL
             )
+        """)
+        
+        # Table for caching DNS lookups (for email validation)
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS dns_cache (
+                domain TEXT PRIMARY KEY,
+                has_mx BOOLEAN DEFAULT 0,
+                mx_records TEXT,
+                has_a BOOLEAN DEFAULT 0,
+                error TEXT,
+                checked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Index for DNS cache expiry checks
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_dns_checked_at 
+            ON dns_cache(checked_at)
         """)
         
         conn.commit()
@@ -253,6 +272,143 @@ def delete_cached_domain(company_name: str) -> bool:
             print(f"No cache entry found for: {company_name}")
         
         return deleted
+
+
+# ============================================
+# DNS Cache Functions (for email validation)
+# ============================================
+
+# DNS cache TTL in hours (how long to keep DNS results)
+DNS_CACHE_TTL_HOURS = 24
+
+
+def get_dns_cache(domain: str) -> dict | None:
+    """
+    Look up DNS records for a domain from the cache.
+    Returns None if not cached or cache is expired.
+    """
+    domain = domain.lower().strip()
+    
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT domain, has_mx, mx_records, has_a, error, checked_at
+            FROM dns_cache
+            WHERE domain = ?
+        """, (domain,))
+        
+        row = cursor.fetchone()
+        
+        if row:
+            # Check if cache is still valid (within TTL)
+            checked_at = datetime.fromisoformat(row["checked_at"])
+            age = datetime.now() - checked_at
+            
+            if age < timedelta(hours=DNS_CACHE_TTL_HOURS):
+                # Parse MX records from JSON
+                mx_records = []
+                if row["mx_records"]:
+                    try:
+                        mx_records = json.loads(row["mx_records"])
+                    except json.JSONDecodeError:
+                        pass
+                
+                return {
+                    "domain": row["domain"],
+                    "has_mx": bool(row["has_mx"]),
+                    "mx_records": mx_records,
+                    "has_a": bool(row["has_a"]),
+                    "error": row["error"],
+                    "from_cache": True,
+                }
+    
+    return None
+
+
+def cache_dns_result(domain: str, result: dict):
+    """
+    Store DNS lookup result in the cache.
+    
+    Args:
+        domain: The domain that was checked
+        result: Dict with has_mx, mx_records, has_a, error fields
+    """
+    domain = domain.lower().strip()
+    
+    # Serialize MX records to JSON
+    mx_records_json = None
+    if result.get("mx_records"):
+        try:
+            mx_records_json = json.dumps(result["mx_records"])
+        except (TypeError, ValueError):
+            pass
+    
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT OR REPLACE INTO dns_cache 
+            (domain, has_mx, mx_records, has_a, error, checked_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        """, (
+            domain,
+            1 if result.get("has_mx") else 0,
+            mx_records_json,
+            1 if result.get("has_a") else 0,
+            result.get("error"),
+        ))
+        
+        conn.commit()
+
+
+def clear_expired_dns_cache():
+    """
+    Remove expired entries from the DNS cache.
+    Called periodically to keep the cache clean.
+    """
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Calculate expiry timestamp
+        expiry_time = datetime.now() - timedelta(hours=DNS_CACHE_TTL_HOURS)
+        
+        cursor.execute("""
+            DELETE FROM dns_cache
+            WHERE checked_at < ?
+        """, (expiry_time.isoformat(),))
+        
+        deleted = cursor.rowcount
+        conn.commit()
+        
+        if deleted > 0:
+            print(f"Cleared {deleted} expired DNS cache entries")
+        
+        return deleted
+
+
+def get_dns_cache_stats() -> dict:
+    """Get statistics about the DNS cache."""
+    with get_db() as conn:
+        cursor = conn.cursor()
+        
+        # Total entries
+        cursor.execute("SELECT COUNT(*) as count FROM dns_cache")
+        total = cursor.fetchone()["count"]
+        
+        # Entries with MX records
+        cursor.execute("SELECT COUNT(*) as count FROM dns_cache WHERE has_mx = 1")
+        with_mx = cursor.fetchone()["count"]
+        
+        # Entries with A records
+        cursor.execute("SELECT COUNT(*) as count FROM dns_cache WHERE has_a = 1")
+        with_a = cursor.fetchone()["count"]
+        
+        return {
+            "total_entries": total,
+            "with_mx_records": with_mx,
+            "with_a_records": with_a,
+        }
 
 
 # Initialize the database when module is imported

@@ -6,10 +6,18 @@ from ddgs import DDGS
 # Import cache functions
 from database import get_cached_domain, cache_domain
 
+# Import enhanced scraping utilities
+from scraper_utils import (
+    get_rate_limiter,
+    retry_with_backoff,
+    fetch_with_beautifulsoup,
+    extract_contact_links,
+    get_page_html,
+    DEFAULT_HEADERS,
+)
+
 # Headers to mimic a real browser
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-}
+HEADERS = DEFAULT_HEADERS
 
 # Jina Reader API - free, no API key needed, gets clean text from any URL
 JINA_READER_URL = "https://r.jina.ai/"
@@ -93,21 +101,44 @@ def is_domain_input(name: str) -> str | None:
     return None
 
 
-def crawl_website(url: str) -> str | None:
+@retry_with_backoff(max_retries=2, base_delay=1.0)
+def crawl_website(url: str, use_fallback: bool = True) -> str | None:
     """
     Use Jina Reader to crawl a website and get clean text.
     Jina handles JavaScript rendering, bypasses some blocks, etc.
+    
+    Falls back to BeautifulSoup if Jina fails and use_fallback is True.
     """
+    rate_limiter = get_rate_limiter()
+    
     try:
+        # Apply rate limiting
+        rate_limiter.wait()
+        
         jina_url = f"{JINA_READER_URL}{url}"
         print(f"  Crawling: {url}")
         response = requests.get(jina_url, headers=HEADERS, timeout=30)
         if response.status_code == 200:
             return response.text
         print(f"  Jina returned {response.status_code}")
+        
+        # If Jina fails, try BeautifulSoup fallback
+        if use_fallback:
+            print(f"  Trying BeautifulSoup fallback for: {url}")
+            return fetch_with_beautifulsoup(url)
+        
         return None
     except Exception as e:
         print(f"  Crawl error: {e}")
+        
+        # Try fallback on exception
+        if use_fallback:
+            try:
+                print(f"  Trying BeautifulSoup fallback for: {url}")
+                return fetch_with_beautifulsoup(url)
+            except Exception as fallback_error:
+                print(f"  Fallback also failed: {fallback_error}")
+        
         return None
 
 
@@ -305,21 +336,46 @@ def find_emails_on_website(website_url: str) -> list[str]:
     """
     Crawl a website to find email addresses.
     Checks the homepage and common contact pages.
+    Also discovers and follows contact-related links.
     """
     all_emails = []
+    crawled_urls = set()
     
-    # Pages to check for contact info
+    # Extended list of pages to check for contact info
     pages_to_check = [
-        "",           # Homepage
+        "",              # Homepage
         "/contact",
-        "/contact-us", 
+        "/contact-us",
+        "/contactus",
         "/about",
+        "/about-us",
+        "/aboutus",
+        "/team",
+        "/our-team",
+        "/people",
+        "/leadership",
         "/support",
         "/help",
+        "/careers",
+        "/jobs",
+        "/press",
+        "/media",
+        "/newsroom",
+        "/investors",
+        "/investor-relations",
+        "/company",
+        "/info",
     ]
     
+    # Phase 1: Check predefined pages
     for page in pages_to_check:
         page_url = urljoin(website_url, page)
+        
+        # Skip if already crawled
+        if page_url in crawled_urls:
+            continue
+        crawled_urls.add(page_url)
+        
         content = crawl_website(page_url)
         
         if content:
@@ -327,8 +383,33 @@ def find_emails_on_website(website_url: str) -> list[str]:
             if emails:
                 print(f"  Found emails on {page_url}: {emails}")
                 all_emails.extend(emails)
-                # If we found emails, we can stop
-                break
+                # If we found multiple emails, we can stop
+                if len(set(all_emails)) >= 3:
+                    break
+    
+    # Phase 2: If no emails found, try to discover contact links from homepage
+    if not all_emails:
+        print("  No emails in standard pages, scanning for contact links...")
+        homepage_html = get_page_html(website_url)
+        
+        if homepage_html:
+            discovered_links = extract_contact_links(homepage_html, website_url)
+            
+            for link_url in discovered_links:
+                # Skip if already crawled
+                if link_url in crawled_urls:
+                    continue
+                crawled_urls.add(link_url)
+                
+                print(f"  Checking discovered link: {link_url}")
+                content = crawl_website(link_url)
+                
+                if content:
+                    emails = extract_emails_from_text(content)
+                    if emails:
+                        print(f"  Found emails on {link_url}: {emails}")
+                        all_emails.extend(emails)
+                        break  # Stop once we find emails
     
     return list(set(all_emails))
 
