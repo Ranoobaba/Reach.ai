@@ -9,6 +9,7 @@ from domain_finder import find_company_domain
 from permutator import generate_email_permutations
 from database import get_cache_stats, search_cache, bulk_import_domains, get_cached_domain, delete_cached_domain, get_dns_cache_stats
 from email_validator import validate_emails_batch, calculate_score, get_score_label
+from background_scraper import BackgroundScraper, get_scraper_status
 
 # Load environment variables
 load_dotenv()
@@ -49,19 +50,10 @@ class GenerateRequest(BaseModel):
     company: str
 
 
-class EmailWithScore(BaseModel):
-    """Email address with validation score and breakdown."""
-    email: str
-    score: int
-    max_score: int
-    label: str  # "Excellent", "Good", "Fair", "Poor", "Invalid"
-    breakdown: dict
-
-
 class GenerateResponse(BaseModel):
-    """Response with domain and scored email permutations."""
+    """Response with domain and email permutations."""
     domain: str
-    emails: list[EmailWithScore]
+    emails: list[str]
     from_cache: bool = False
     source: Optional[str] = None
 
@@ -88,13 +80,12 @@ def health_check():
 @app.post("/api/generate", response_model=GenerateResponse)
 def generate_emails(request: GenerateRequest):
     """
-    Generate email permutations for a person at a company with validation scores.
+    Generate email permutations for a person at a company.
     
     1. Checks cache first for instant lookups
     2. If not cached, searches for the company's email domain
     3. Caches the result for future requests
     4. Generates 30 email permutations based on the person's name
-    5. Validates each email and returns with scores
     """
     if not request.first_name.strip():
         raise HTTPException(status_code=400, detail="First name is required")
@@ -115,32 +106,15 @@ def generate_emails(request: GenerateRequest):
     domain = result["email_domain"]
     
     # Generate email permutations
-    raw_emails = generate_email_permutations(
+    emails = generate_email_permutations(
         request.first_name,
         request.last_name,
         domain
     )
     
-    # Validate all emails and get scores
-    validation_results = validate_emails_batch(raw_emails)
-    
-    # Convert to response format with scores
-    scored_emails = []
-    for vr in validation_results:
-        scored_emails.append(EmailWithScore(
-            email=vr.email,
-            score=vr.score,
-            max_score=vr.max_score,
-            label=get_score_label(vr.score),
-            breakdown=vr.breakdown,
-        ))
-    
-    # Sort by score (highest first)
-    scored_emails.sort(key=lambda e: e.score, reverse=True)
-    
     return GenerateResponse(
         domain=domain, 
-        emails=scored_emails,
+        emails=emails,
         from_cache=result.get("from_cache", False),
         source=result.get("source")
     )
@@ -274,6 +248,40 @@ def delete_cache_entry(company_name: str):
     if deleted:
         return {"status": "deleted", "company_name": company_name}
     return {"status": "not_found", "company_name": company_name}
+
+
+# ============================================
+# Background Scraper Endpoints
+# ============================================
+
+@app.get("/api/scraper/status")
+def scraper_status():
+    """Get the status of the background scraper and cached companies."""
+    return get_scraper_status()
+
+
+@app.post("/api/scraper/run")
+def run_scraper(source: str = Query(default="tech", description="Source to scrape: yc, seed, tech, all")):
+    """
+    Trigger a background scrape for a specific source.
+    Note: This runs synchronously and may take a while.
+    
+    Sources:
+    - tech: Curated list of popular tech companies
+    - seed: Companies from seed_data.py
+    - yc: Y Combinator companies (from their API)
+    - all: All sources combined
+    """
+    if source not in ["yc", "seed", "tech", "all"]:
+        raise HTTPException(status_code=400, detail="Invalid source. Use: yc, seed, tech, or all")
+    
+    scraper = BackgroundScraper(rate_limit_delay=2.0)
+    stats = scraper.scrape_source(source)
+    
+    return {
+        "status": "completed",
+        "stats": stats,
+    }
 
 
 if __name__ == "__main__":

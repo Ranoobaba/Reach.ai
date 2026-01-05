@@ -2,40 +2,12 @@
 
 import { useState } from "react";
 
-// Score label colors
-const getLabelColor = (label) => {
-  switch (label) {
-    case "Excellent":
-      return "text-emerald-400 bg-emerald-400/10";
-    case "Good":
-      return "text-blue-400 bg-blue-400/10";
-    case "Fair":
-      return "text-yellow-400 bg-yellow-400/10";
-    case "Poor":
-      return "text-orange-400 bg-orange-400/10";
-    default:
-      return "text-red-400 bg-red-400/10";
-  }
-};
-
-// Score bar color
-const getScoreColor = (score) => {
-  if (score >= 90) return "bg-emerald-500";
-  if (score >= 70) return "bg-blue-500";
-  if (score >= 50) return "bg-yellow-500";
-  if (score >= 30) return "bg-orange-500";
-  return "bg-red-500";
-};
-
 export default function EmailResults({ domain, emails }) {
   const [copied, setCopied] = useState(false);
 
-  // Extract just the email strings for copy/mailto
-  const emailStrings = emails.map((e) => (typeof e === "string" ? e : e.email));
-
   const handleCopyAll = async () => {
     try {
-      await navigator.clipboard.writeText(emailStrings.join("\n"));
+      await navigator.clipboard.writeText(emails.join("\n"));
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch (err) {
@@ -45,7 +17,7 @@ export default function EmailResults({ domain, emails }) {
 
   const handleOpenEmail = () => {
     // Create mailto link with all emails in the "to" field
-    const mailtoLink = `mailto:${emailStrings.join(",")}`;
+    const mailtoLink = `mailto:${emails.join(",")}`;
     window.location.href = mailtoLink;
   };
 
@@ -66,45 +38,16 @@ export default function EmailResults({ domain, emails }) {
       </div>
 
       <div className="bg-zinc-800/50 border border-zinc-700 rounded-lg overflow-hidden">
-        <div className="max-h-96 overflow-y-auto p-3 space-y-2">
-          {emails.map((item, index) => {
-            // Support both old format (string) and new format (object with score)
-            const isObject = typeof item === "object";
-            const email = isObject ? item.email : item;
-            const score = isObject ? item.score : null;
-            const label = isObject ? item.label : null;
-            const maxScore = isObject ? item.max_score : 100;
-
-            return (
-              <div
-                key={index}
-                className="bg-zinc-700/30 rounded-lg p-3 hover:bg-zinc-700/50 transition-colors"
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-sm font-mono text-zinc-200 truncate">
-                    {email}
-                  </span>
-                  {score !== null && (
-                    <span
-                      className={`text-xs font-medium px-2 py-0.5 rounded-full ${getLabelColor(
-                        label
-                      )}`}
-                    >
-                      {score}/{maxScore}
-                    </span>
-                  )}
-                </div>
-                {score !== null && (
-                  <div className="mt-2 h-1.5 bg-zinc-600 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full ${getScoreColor(score)} transition-all duration-300`}
-                      style={{ width: `${(score / maxScore) * 100}%` }}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
+        <div className="max-h-80 overflow-y-auto p-4 space-y-1">
+          {emails.map((email, index) => (
+            <div 
+              key={index}
+              className="text-sm font-mono text-zinc-300 py-1 px-2 rounded
+                         hover:bg-zinc-700/50 transition-colors cursor-default"
+            >
+              {email}
+            </div>
+          ))}
         </div>
       </div>
 
